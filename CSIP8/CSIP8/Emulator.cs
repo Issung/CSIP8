@@ -68,6 +68,9 @@ namespace CSIP8
             { 0xF0, 0x80, 0xF0, 0x80, 0x80 }, // F
         };
 
+        const int MEMORY_LENGTH = 4096;
+        byte[] memory = new byte[MEMORY_LENGTH];
+
         const int DISPLAY_COLUMNS = 64;
         const int DISPLAY_ROWS = 32;
 
@@ -91,24 +94,40 @@ namespace CSIP8
             random = new Random();
         }
 
+        public void Cycle()
+        {
+            
+        }
+
         private void PrintRom(byte[] rom)
         {
-            string buffer = "";
+            int buffer = 0;
 
             for (int i = 0; i < rom.Length; i++)
             {
-                buffer += Util.GetLeft4Bits(rom[i]).ToString("X");
-                buffer += Util.GetRight4Bits(rom[i]).ToString("X");
+                //buffer += Util.GetLeft4Bits(rom[i]).ToString("X");
+                //buffer += Util.GetRight4Bits(rom[i]).ToString("X");
+
+                if (buffer != 0)
+                    buffer = buffer << 8;
+
+                buffer |= rom[i];
 
                 if (i % 2 == 1)
                 {
-                    Console.WriteLine(buffer);
-                    buffer = "";
+                    Console.WriteLine(buffer.ToString("X"));
+                    buffer = 0;
                 }
             }
         }
 
-        private bool GetKeyPressed(byte key)
+        private byte? GetPressedKey()
+        {
+            //TODO
+            return null;
+        }
+
+        private bool IsKeyPressed(byte key)
         {
             if (15 < key || key < 0)
                 throw new ArgumentException("Key value out of range, ");
@@ -130,7 +149,7 @@ namespace CSIP8
         /// Jump to a machine code routine at nnn.
         /// </summary>
         private void JumpToMachineCodeRoutine(short addr)
-        { 
+        {
 
         }
 
@@ -139,7 +158,7 @@ namespace CSIP8
         /// Clear the display.
         /// </summary>
         private void Clear()
-        { 
+        {
 
         }
 
@@ -149,8 +168,8 @@ namespace CSIP8
         /// The interpreter sets the program counter to the address at the top of the stack, then subtracts 1 from the stack pointer.
         /// </summary>
         private void Return()
-        { 
-            
+        {
+
         }
 
         /// <summary>
@@ -159,7 +178,7 @@ namespace CSIP8
         /// </summary>
         private void Jump(short addr)
         {
-           
+
         }
 
         /// <summary>
@@ -168,7 +187,7 @@ namespace CSIP8
         /// The interpreter increments the stack pointer, then puts the current PC on the top of the stack.The PC is then set to nnn.
         /// </summary>
         private void Call(short addr)
-        { 
+        {
 
         }
 
@@ -180,7 +199,7 @@ namespace CSIP8
         private void SkipIf(byte register, byte value)
         {
             if (registers[register] == value)
-            { 
+            {
                 registerProgramCounter += 2;
             }
         }
@@ -281,7 +300,7 @@ namespace CSIP8
         private void EIGHTXY4(byte reg1, byte reg2)
         {
             registers[reg1] = (byte)(registers[reg1] + registers[reg2]);
-            
+
             if (registers[reg1] > 255)
             {
                 registers[REG_F] = 1;
@@ -463,7 +482,7 @@ namespace CSIP8
         /// </summary>
         private void SKP(byte regX)
         {
-            if (GetKeyPressed(registers[regX]))
+            if (IsKeyPressed(registers[regX]))
                 registerProgramCounter += 2;
         }
 
@@ -474,7 +493,7 @@ namespace CSIP8
         /// </summary>
         private void SKNP(byte regX)
         {
-            if (!GetKeyPressed(registers[regX]))
+            if (!IsKeyPressed(registers[regX]))
                 registerProgramCounter += 2;
         }
 
@@ -486,6 +505,105 @@ namespace CSIP8
         private void LDDT(byte regX)
         {
             registers[regX] = registerDelayTimer;
+        }
+
+        /// <summary>
+        /// Fx0A - LD Vx, K
+        /// Wait for a key press, store the value of the key in Vx.
+        /// All execution stops until a key is pressed, then the value of that key is stored in Vx.
+        /// </summary>
+        private void LDK(byte regX)
+        {
+            byte? key = null;
+
+            while ((key = GetPressedKey()) == null)
+            {
+                // Do nothing, just wait for a key to be pressed.
+            }
+
+            registers[regX] = key.Value;
+        }
+
+        /// <summary>
+        /// Fx15 - LD DT, Vx
+        /// Set delay timer = Vx.
+        /// DT is set equal to the value of Vx.
+        /// </summary>
+        private void SetDelayTimer(byte regX)
+        {
+            registerDelayTimer = registers[regX];
+        }
+
+        /// <summary>
+        /// Fx18 - LD ST, Vx
+        /// Set sound timer = Vx.
+        /// ST is set equal to the value of Vx.
+        /// </summary>
+        private void SetSoundTimer(byte regX)
+        {
+            registerSoundTimer = registers[regX];
+        }
+
+        /// <summary>
+        /// Fx1E - ADD I, Vx
+        /// Set I = I + Vx.
+        /// The values of I and Vx are added, and the results are stored in I.
+        /// </summary>
+        private void ADDI(byte regX)
+        {
+            registerI += registers[regX];
+        }
+
+        /// <summary>
+        /// Fx29 - LD F, Vx
+        /// Set I = location of sprite for digit Vx.
+        /// The value of I is set to the location for the hexadecimal sprite corresponding to the value of Vx.
+        /// </summary>
+        private void FX29(byte regX)
+        {
+            //TODO: Probably incorrect.
+            registerI = registers[regX];
+        }
+
+        /// <summary>
+        /// Fx33 - LD B, Vx
+        /// Store BCD representation of Vx in memory locations I, I+1, and I+2.
+        /// The interpreter takes the decimal value of Vx, and places the hundreds digit in memory at 
+        /// location in I, the tens digit at location I+1, and the ones digit at location I+2.
+        /// </summary>
+        private void test(byte regX)
+        {
+            memory[registerI] = (byte)(registers[regX] / 100);
+            memory[registerI + 1] = (byte)(registers[regX] / 10 % 10);
+            memory[registerI + 2] = (byte)(registers[regX] % 10);
+        }
+
+        /// <summary>
+        /// Fx55 - LD [I], Vx
+        /// Store registers V0 through Vx in memory starting at location I.
+        /// The interpreter copies the values of registers V0 through Vx into memory, starting at the address in I.
+        /// </summary>
+        private void RegistersToMemory(byte regX)
+        {
+            //TODO: < regX or <= regX?
+            for (int i = 0; i <= regX; i++)
+            {
+                memory[registerI + i] = registers[i];
+            }
+        }
+
+        /// <summary>
+        /// Fx65 - LD Vx, [I]
+        /// Read registers V0 through Vx from memory starting at location I.
+        /// The interpreter reads values from memory starting at location I into registers V0 through Vx.
+        /// </summary>
+        private void MemoryToRegisters(byte regX)
+        {
+            //TODO: < regX or <= regX?
+            for (int i = 0; i <= regX; i++)
+            {
+                registers[i] = memory[registerI + i];
+            }
         }
     }
 }
