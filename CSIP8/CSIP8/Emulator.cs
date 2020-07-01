@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 //http://devernay.free.fr/hacks/chip8/C8TECH10.HTM#2.2
@@ -12,7 +13,7 @@ namespace CSIP8
 {
     class Emulator
     {
-        const string ROM_FILENAME = "Roms/Pong.ch8";
+        const string ROM_FILENAME = "Roms/Tron.ch8";
 
         const byte REG_0 = 0x0,
                     REG_1 = 0x1,
@@ -50,23 +51,23 @@ namespace CSIP8
         const int STACK_LENGTH = 16;
         Stack<ushort> stack = new Stack<ushort>(STACK_LENGTH);
 
-        byte[,] characters = {
-            { 0xF0, 0x90, 0x90, 0x90, 0xF0 }, // 0
-            { 0x20, 0x60, 0x20, 0x20, 0x70 }, // 1
-            { 0xF0, 0x10, 0xF0, 0x80, 0xF0 }, // 2
-            { 0xF0, 0x10, 0xF0, 0x10, 0xF0 }, // 3
-            { 0x90, 0x90, 0xF0, 0x10, 0x10 }, // 4
-            { 0xF0, 0x80, 0xF0, 0x10, 0xF0 }, // 5
-            { 0xF0, 0x80, 0xF0, 0x90, 0xF0 }, // 6
-            { 0xF0, 0x10, 0x20, 0x40, 0x40 }, // 7
-            { 0xF0, 0x90, 0xF0, 0x90, 0xF0 }, // 8
-            { 0xF0, 0x90, 0xF0, 0x10, 0xF0 }, // 9
-            { 0xF0, 0x90, 0xF0, 0x90, 0x90 }, // A
-            { 0xE0, 0x90, 0xE0, 0x90, 0xE0 }, // B
-            { 0xF0, 0x80, 0x80, 0x80, 0xF0 }, // C
-            { 0xE0, 0x90, 0x90, 0x90, 0xE0 }, // D
-            { 0xF0, 0x80, 0xF0, 0x80, 0xF0 }, // E
-            { 0xF0, 0x80, 0xF0, 0x80, 0x80 }, // F
+        byte[] characters = {
+            0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+            0x20, 0x60, 0x20, 0x20, 0x70, // 1
+            0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+            0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+            0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+            0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+            0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+            0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+            0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+            0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+            0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+            0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+            0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+            0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+            0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+            0xF0, 0x80, 0xF0, 0x80, 0x80 // F
         };
 
         const int MEMORY_LENGTH = 4096;
@@ -76,7 +77,7 @@ namespace CSIP8
         const int DISPLAY_ROWS = 32;
 
         /// <summary>
-        /// The location most chip8 programs start at (512).
+        /// The location most chip8 programs start at in memory (512).
         /// Space before this point is reserved for the CHIP8 interpreter.
         /// </summary>
         const int MEMORY_PROGRAM_START = 0x200;
@@ -85,8 +86,6 @@ namespace CSIP8
         /// Access with ROW, COLUMN.
         /// </summary>
         bool[,] display = new bool[DISPLAY_ROWS, DISPLAY_COLUMNS];
-
-        byte[] rom;
 
         Random random;
 
@@ -97,9 +96,16 @@ namespace CSIP8
 
         public Emulator()
         {
-            rom = File.ReadAllBytes(ROM_FILENAME);
+            byte[] rom = File.ReadAllBytes(ROM_FILENAME);
             PrintRom(rom);
 
+            //Load characters into memory.
+            for (int i = 0; i < characters.Length; i++)
+            {
+                memory[i] = characters[i];
+            }
+
+            //Load program into memory.
             for (int i = 0; i < rom.Length; i++)
             {
                 memory[MEMORY_PROGRAM_START + i] = rom[i];
@@ -109,6 +115,13 @@ namespace CSIP8
             Console.ReadLine();
 
             random = new Random();
+
+            while (true)
+            {
+                Cycle();
+                DrawScreenToConsole(true);
+                Thread.Sleep(16);
+            }
         }
 
         private void PrintRom(byte[] rom)
@@ -135,6 +148,8 @@ namespace CSIP8
 
         public void Cycle()
         {
+            ushort programCounterWas = registerProgramCounter;
+
             ushort instruction = memory[registerProgramCounter];
             instruction <<= 8;
             instruction |= memory[registerProgramCounter + 1];
@@ -182,7 +197,9 @@ namespace CSIP8
             else if ((instruction >> 12) == 8)
             {
                 // One of 9 instructions that begin with 8.
-                if ((instruction & 0x000F) == 1)
+                if ((instruction & 0x000F) == 0)
+                    CopyRegister(Util.GetBits12To8(instruction), Util.GetBits8To4(instruction));
+                else if ((instruction & 0x000F) == 1)
                     BitwiseOrRegister(Util.GetBits12To8(instruction), Util.GetBits8To4(instruction));
                 else if ((instruction & 0x000F) == 2)
                     BitwiseAndRegister(Util.GetBits12To8(instruction), Util.GetBits8To4(instruction));
@@ -230,11 +247,89 @@ namespace CSIP8
             else if ((instruction >> 12) == 0xF)
             {
                 // One of 9 instructions that start with F.
+
+                if ((instruction & 0x00FF) == 0x07)
+                    LDDT(Util.GetBits12To8(instruction));
+                else if ((instruction & 0x00FF) == 0x0A)
+                    LDK(Util.GetBits12To8(instruction));
+                else if ((instruction & 0x00FF) == 0x15)
+                    SetDelayTimer(Util.GetBits12To8(instruction));
+                else if ((instruction & 0x00FF) == 0x18)
+                    SetSoundTimer(Util.GetBits12To8(instruction));
+                else if ((instruction & 0x00FF) == 0x1E)
+                    ADDI(Util.GetBits12To8(instruction));
+                else if ((instruction & 0x00FF) == 0x29)
+                    FX29(Util.GetBits12To8(instruction));
+                else if ((instruction & 0x00FF) == 0x33)
+                    FX33(Util.GetBits12To8(instruction));
+                else if ((instruction & 0x00FF) == 0x55)
+                    RegistersToMemory(Util.GetBits12To8(instruction));
+                else if ((instruction & 0x00FF) == 0x65)
+                    MemoryToRegisters(Util.GetBits12To8(instruction));
+                else
+                    throw new Exception("Instruction entered F branch but not executed, operation was not found.");
             }
             else
             {
                 throw new Exception("Instruction was not executed, operation was not found.");
             }
+
+            if (registerSoundTimer > 0)
+            {
+                Console.Beep(800, 16);
+                registerSoundTimer -= 1;
+            }
+
+            if (registerDelayTimer > 0)
+            { 
+                registerDelayTimer -= 1;
+            }
+
+            //If the program counter hasnt been increased by any of the executed commands.
+            if (programCounterWas == registerProgramCounter)
+            {
+                registerProgramCounter += 2;
+            }
+        }
+
+        private void DrawScreenToConsole(bool drawDebugInfo)
+        {
+            string screenBuffer = "";
+            string buffer = "";
+
+            for (int r = 0; r < DISPLAY_ROWS; r++)
+            {
+                for (int c = 0; c < DISPLAY_COLUMNS; c++)
+                {
+                    buffer += display[r, c] ? " O " : "   ";
+                }
+
+                //Console.WriteLine(buffer);
+                screenBuffer += buffer + Environment.NewLine;
+                buffer = "";
+            }
+
+            if (drawDebugInfo)
+            { 
+                for (int i = 0; i < REGISTER_LENGTH; i++)
+                {
+                    //Console.WriteLine($"Register {i.ToString("X")}: {registers[i]} (Hex {registers[i].ToString("X")})");
+                    screenBuffer += ($"Register {i.ToString("X")}: {registers[i]} (Hex {registers[i].ToString("X")}){Environment.NewLine}");
+                }
+
+                /*Console.WriteLine($"Program Counter: {registerProgramCounter} (Hex {registerProgramCounter.ToString("X")})");
+                Console.WriteLine($"Register I: {registerI} (Hex {registerI.ToString("X")})");
+                Console.WriteLine($"Register Delay Timer: {registerDelayTimer} (Hex {registerDelayTimer.ToString("X")})");
+                Console.WriteLine($"Register Sound Timer: {registerSoundTimer} (Hex {registerSoundTimer.ToString("X")})");*/
+
+                screenBuffer += ($"Program Counter: {registerProgramCounter} (Hex {registerProgramCounter.ToString("X")}){Environment.NewLine}");
+                screenBuffer += ($"Register I: {registerI} (Hex {registerI.ToString("X")}){Environment.NewLine}");
+                screenBuffer += ($"Register Delay Timer: {registerDelayTimer} (Hex {registerDelayTimer.ToString("X")}){Environment.NewLine}");
+                screenBuffer += ($"Register Sound Timer: {registerSoundTimer} (Hex {registerSoundTimer.ToString("X")}){Environment.NewLine}");
+            }
+
+            Console.Clear();
+            Console.WriteLine(screenBuffer);
         }
 
         private byte? GetPressedKey()
@@ -277,7 +372,7 @@ namespace CSIP8
         {
             for (int r = 0; r < DISPLAY_ROWS; r++)
             {
-                for (int c = 0; r < DISPLAY_COLUMNS; c++)
+                for (int c = 0; c < DISPLAY_COLUMNS; c++)
                 {
                     display[r, c] = false;
                 }
@@ -291,7 +386,8 @@ namespace CSIP8
         /// </summary>
         private void RET()
         {
-            registerProgramCounter = stack.Pop();
+            //TODO: Should + 2 here?
+            registerProgramCounter = (ushort)(stack.Pop() + 2);
         }
 
         /// <summary>
@@ -323,7 +419,7 @@ namespace CSIP8
         {
             if (registers[register] == value)
             {
-                registerProgramCounter += 2;
+                registerProgramCounter += 4;
             }
         }
 
@@ -336,7 +432,7 @@ namespace CSIP8
         {
             if (registers[register] != value)
             {
-                registerProgramCounter += 2;
+                registerProgramCounter += 4;
             }
         }
 
@@ -349,7 +445,7 @@ namespace CSIP8
         {
             if (registers[register1] == registers[register2])
             {
-                registerProgramCounter += 2;
+                registerProgramCounter += 4;
             }
         }
 
@@ -422,11 +518,16 @@ namespace CSIP8
         // TODO: New name.
         private void EIGHTXY4(byte reg1, byte reg2)
         {
-            registers[reg1] = (byte)(registers[reg1] + registers[reg2]);
+            ushort temp = (ushort)(registers[reg1] + registers[reg2]);
+            registers[reg1] = Util.GetBits8To0(temp);
 
-            if (registers[reg1] > 255)
+            if (temp > 255)
             {
                 registers[REG_F] = 1;
+            }
+            else
+            {
+                registers[REG_F] = 0;
             }
         }
 
@@ -435,14 +536,18 @@ namespace CSIP8
         /// Set Vx = Vx - Vy, set VF = NOT borrow.
         /// If Vx > Vy, then VF is set to 1, otherwise 0. Then Vy is subtracted from Vx, and the results stored in Vx.
         /// </summary>
-        private void SUB(byte reg1, byte reg2)
+        private void SUB(byte regX, byte regY)
         {
-            registers[reg1] = (byte)(registers[reg1] - registers[reg2]);
-
-            if (registers[reg1] > registers[reg2])
+            if (registers[regX] > registers[regY])
             {
                 registers[REG_F] = 1;
             }
+            else
+            {
+                registers[REG_F] = 0;
+            }
+
+            registers[regX] = (byte)(registers[regX] - registers[regY]);
         }
 
         /// <summary>
@@ -470,8 +575,6 @@ namespace CSIP8
         /// </summary>
         private void SUBN(byte regX, byte regY)
         {
-            registers[regX] = (byte)(registers[regY] - registers[regX]);
-
             if (registers[regY] > registers[regX])
             {
                 registers[REG_F] = 1;
@@ -480,6 +583,8 @@ namespace CSIP8
             {
                 registers[REG_F] = 0;
             }
+
+            registers[regX] = (byte)(registers[regY] - registers[regX]);
         }
 
         /// <summary>
@@ -510,7 +615,7 @@ namespace CSIP8
         {
             if (registers[regX] != registers[regY])
             {
-                registerProgramCounter += 2;
+                registerProgramCounter += 4;
             }
         }
 
@@ -560,27 +665,27 @@ namespace CSIP8
 
             for (int i = 0; i < n; i++)
             {
-                spriteBuffer[i] = rom[registerI + i];
+                spriteBuffer[i] = memory[registerI + i];
             }
 
             bool pixelWasErased = false;
 
             for (int spriteIndex = 0; spriteIndex < spriteBuffer.Length; spriteIndex++)
             {
-                int row = registers[regX] + spriteIndex;
+                int column = registers[regX] + spriteIndex;
 
-                if (row > DISPLAY_ROWS)
+                while (column >= DISPLAY_COLUMNS)
                 {
-                    row -= DISPLAY_ROWS;
+                    column -= DISPLAY_COLUMNS;
                 }
 
-                for (int spriteBitIndex = 0; spriteBitIndex < 8; spriteBitIndex--)
+                for (int spriteBitIndex = 0; spriteBitIndex < 8; spriteBitIndex++)
                 {
-                    int column = registers[regY] + spriteBitIndex;
+                    int row = registers[regY] + spriteBitIndex;
 
-                    if (column > DISPLAY_COLUMNS)
+                    while (row >= DISPLAY_ROWS)
                     {
-                        column -= DISPLAY_COLUMNS;
+                        row -= DISPLAY_ROWS;
                     }
 
                     bool valueWas = display[row, column];
@@ -606,7 +711,7 @@ namespace CSIP8
         private void SKP(byte regX)
         {
             if (IsKeyPressed(registers[regX]))
-                registerProgramCounter += 2;
+                registerProgramCounter += 4;
         }
 
         /// <summary>
@@ -617,7 +722,7 @@ namespace CSIP8
         private void SKNP(byte regX)
         {
             if (!IsKeyPressed(registers[regX]))
-                registerProgramCounter += 2;
+                registerProgramCounter += 4;
         }
 
         /// <summary>
@@ -694,7 +799,7 @@ namespace CSIP8
         /// The interpreter takes the decimal value of Vx, and places the hundreds digit in memory at 
         /// location in I, the tens digit at location I+1, and the ones digit at location I+2.
         /// </summary>
-        private void test(byte regX)
+        private void FX33(byte regX)
         {
             memory[registerI] = (byte)(registers[regX] / 100);
             memory[registerI + 1] = (byte)(registers[regX] / 10 % 10);
