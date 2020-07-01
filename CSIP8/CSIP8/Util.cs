@@ -40,5 +40,46 @@ namespace CSIP8
         {
             return (byte)(b & 0b0000_1111);
         }
+
+        /* Third */
+
+        public static ushort GetBits12To0(ushort us)
+        {
+            return (byte)(us & 0x0FFF);
+        }
+
+        /* Quarters */
+
+        public static byte GetBits16To12(ushort us)
+        {
+            return (byte)(us >> 12);
+        }
+
+        public static byte GetBits12To8(ushort us)
+        {
+            return (byte)((us & 0x0F00) >> 8);
+        }
+
+        public static byte GetBits8To4(ushort us)
+        {
+            return (byte)((us & 0x00F0) >> 4);
+        }
+
+        public static byte GetBits4To0(ushort us)
+        {
+            return (byte)(us & 0x000F);
+        }
+
+        /* Halves */
+
+        public static byte GetBits16To8(ushort us)
+        {
+            return (byte)((us & 0xFF00) >> 8);
+        }
+
+        public static byte GetBits8To0(ushort us)
+        {
+            return (byte)(us & 0x00FF);
+        }
     }
 }

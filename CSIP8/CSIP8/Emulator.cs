@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -36,18 +37,18 @@ namespace CSIP8
         /// <summary>
         /// Address Register
         /// </summary>
-        short registerI;
+        ushort registerI;
 
-        short registerProgramCounter;
+        ushort registerProgramCounter = MEMORY_PROGRAM_START;
 
-        short registerStackPointer;
+        ushort registerStackPointer;
 
         byte registerDelayTimer;
 
         byte registerSoundTimer;
 
         const int STACK_LENGTH = 16;
-        short[] stack = new short[STACK_LENGTH];
+        Stack<ushort> stack = new Stack<ushort>(STACK_LENGTH);
 
         byte[,] characters = {
             { 0xF0, 0x90, 0x90, 0x90, 0xF0 }, // 0
@@ -75,6 +76,12 @@ namespace CSIP8
         const int DISPLAY_ROWS = 32;
 
         /// <summary>
+        /// The location most chip8 programs start at (512).
+        /// Space before this point is reserved for the CHIP8 interpreter.
+        /// </summary>
+        const int MEMORY_PROGRAM_START = 0x200;
+
+        /// <summary>
         /// Access with ROW, COLUMN.
         /// </summary>
         bool[,] display = new bool[DISPLAY_ROWS, DISPLAY_COLUMNS];
@@ -82,26 +89,31 @@ namespace CSIP8
         byte[] rom;
 
         Random random;
+
+        /// <summary>
+        /// Container used by "random" to generate a random byte.
+        /// </summary>
         byte[] randomByteContainer = new byte[1];
 
         public Emulator()
         {
             rom = File.ReadAllBytes(ROM_FILENAME);
             PrintRom(rom);
+
+            for (int i = 0; i < rom.Length; i++)
+            {
+                memory[MEMORY_PROGRAM_START + i] = rom[i];
+            }
+
             Console.WriteLine("Read rom complete.");
             Console.ReadLine();
 
             random = new Random();
         }
 
-        public void Cycle()
-        {
-            
-        }
-
         private void PrintRom(byte[] rom)
         {
-            int buffer = 0;
+            ushort buffer = 0;
 
             for (int i = 0; i < rom.Length; i++)
             {
@@ -109,7 +121,7 @@ namespace CSIP8
                 //buffer += Util.GetRight4Bits(rom[i]).ToString("X");
 
                 if (buffer != 0)
-                    buffer = buffer << 8;
+                    buffer <<= 8;
 
                 buffer |= rom[i];
 
@@ -118,6 +130,110 @@ namespace CSIP8
                     Console.WriteLine(buffer.ToString("X"));
                     buffer = 0;
                 }
+            }
+        }
+
+        public void Cycle()
+        {
+            ushort instruction = memory[registerProgramCounter];
+            instruction <<= 8;
+            instruction |= memory[registerProgramCounter + 1];
+
+            if (instruction == 0x00E0)
+            {
+                CLS();
+            }
+            else if (instruction == 0x00EE)
+            {
+                RET();
+            }
+            else if ((instruction >> 12) == 0)
+            {
+                JumpToMachineCodeRoutine((ushort)(instruction * 0xFFF));
+            }
+            else if ((instruction >> 12) == 1)
+            {
+                Jump((ushort)(instruction & 0x0FFF));
+            }
+            else if ((instruction >> 12) == 2)
+            {
+                Call((ushort)(instruction & 0x0FFF));
+            }
+            else if ((instruction >> 12) == 3)
+            {
+                SkipIf((byte)((instruction & 0x0F00) >> 8), (byte)(instruction & 0x00FF));
+            }
+            else if ((instruction >> 12) == 4)
+            {
+                SkipIfNot((byte)((instruction & 0x0F00) >> 8), (byte)(instruction & 0x00FF));
+            }
+            else if ((instruction >> 12) == 5)
+            {
+                SkipIfRegister(Util.GetBits12To8(instruction), Util.GetBits8To4(instruction));
+            }
+            else if ((instruction >> 12) == 6)
+            {
+                Set(Util.GetBits12To8(instruction), Util.GetBits8To0(instruction));
+            }
+            else if ((instruction >> 12) == 7)
+            {
+                AddToRegister(Util.GetBits12To8(instruction), Util.GetBits8To0(instruction));
+            }
+            else if ((instruction >> 12) == 8)
+            {
+                // One of 9 instructions that begin with 8.
+                if ((instruction & 0x000F) == 1)
+                    BitwiseOrRegister(Util.GetBits12To8(instruction), Util.GetBits8To4(instruction));
+                else if ((instruction & 0x000F) == 2)
+                    BitwiseAndRegister(Util.GetBits12To8(instruction), Util.GetBits8To4(instruction));
+                else if ((instruction & 0x000F) == 3)
+                    BitwiseXorRegister(Util.GetBits12To8(instruction), Util.GetBits8To4(instruction));
+                else if ((instruction & 0x000F) == 4)
+                    EIGHTXY4(Util.GetBits12To8(instruction), Util.GetBits8To4(instruction));
+                else if ((instruction & 0x000F) == 5)
+                    SUB(Util.GetBits12To8(instruction), Util.GetBits8To4(instruction));
+                else if ((instruction & 0x000F) == 6)
+                    SHR(Util.GetBits12To8(instruction), Util.GetBits8To4(instruction));
+                else if ((instruction & 0x000F) == 7)
+                    SUBN(Util.GetBits12To8(instruction), Util.GetBits8To4(instruction));
+                else
+                    throw new Exception("Instruction entered 8 branch but not executed, operation was not found.");
+            }
+            else if ((instruction >> 12) == 9)
+            {
+                SNE(Util.GetBits12To8(instruction), Util.GetBits8To4(instruction));
+            }
+            else if ((instruction >> 12) == 0xA)
+            {
+                LD(Util.GetBits12To0(instruction));
+            }
+            else if ((instruction >> 12) == 0xB)
+            {
+                JP(Util.GetBits12To0(instruction));
+            }
+            else if ((instruction >> 12) == 0xC)
+            {
+                RND(Util.GetBits12To8(instruction), Util.GetBits8To0(instruction));
+            }
+            else if ((instruction >> 12) == 0xD)
+            {
+                DRW(Util.GetBits12To8(instruction), Util.GetBits8To4(instruction), Util.GetBits4To0(instruction));
+            }
+            else if ((instruction & 0xE09E) == 0xE09E)
+            {
+                SKP(Util.GetBits12To8(instruction));
+            }
+            else if ((instruction & 0xE0A1) == 0xE0A1)
+            {
+                SKNP(Util.GetBits12To8(instruction));
+            }
+            else if ((instruction >> 12) == 0xF)
+            {
+                // One of 9 instructions that start with F.
+            }
+            else
+            {
+                throw new Exception("Instruction was not executed, operation was not found.");
             }
         }
 
@@ -148,18 +264,24 @@ namespace CSIP8
         /// 0nnn - SYS addr
         /// Jump to a machine code routine at nnn.
         /// </summary>
-        private void JumpToMachineCodeRoutine(short addr)
+        private void JumpToMachineCodeRoutine(ushort addr)
         {
-
+            //TODO.
         }
 
         /// <summary>
-        /// 00E - CLS
+        /// 00E0 - CLS
         /// Clear the display.
         /// </summary>
-        private void Clear()
+        private void CLS()
         {
-
+            for (int r = 0; r < DISPLAY_ROWS; r++)
+            {
+                for (int c = 0; r < DISPLAY_COLUMNS; c++)
+                {
+                    display[r, c] = false;
+                }
+            }
         }
 
         /// <summary>
@@ -167,28 +289,29 @@ namespace CSIP8
         /// Return from a subroutine.
         /// The interpreter sets the program counter to the address at the top of the stack, then subtracts 1 from the stack pointer.
         /// </summary>
-        private void Return()
+        private void RET()
         {
-
+            registerProgramCounter = stack.Pop();
         }
 
         /// <summary>
         /// 1nnn - JP addr
         /// The interpreter sets the program counter to nnn.
         /// </summary>
-        private void Jump(short addr)
+        private void Jump(ushort nnn)
         {
-
+            registerProgramCounter = nnn;
         }
 
         /// <summary>
         /// 2nnn - CALL addr
         /// Call subroutine at nnn.
-        /// The interpreter increments the stack pointer, then puts the current PC on the top of the stack.The PC is then set to nnn.
+        /// The interpreter increments the stack pointer, then puts the current PC on the top of the stack. The PC is then set to nnn.
         /// </summary>
-        private void Call(short addr)
+        private void Call(ushort nnn)
         {
-
+            stack.Push(registerProgramCounter);
+            registerProgramCounter = nnn;
         }
 
         /// <summary>
@@ -396,7 +519,7 @@ namespace CSIP8
         /// Set I = nnn.
         /// The value of register I is set to nnn.
         /// </summary>
-        private void LD(byte nnn)
+        private void LD(ushort nnn)
         {
             registerI = nnn;
         }
@@ -406,9 +529,9 @@ namespace CSIP8
         /// Jump to location nnn + V0.
         /// The program counter is set to nnn plus the value of V0.
         /// </summary>
-        private void JP(byte nnn)
+        private void JP(ushort nnn)
         {
-            registerProgramCounter = (short)(nnn + registers[REG_0]);
+            registerProgramCounter = (ushort)(nnn + registers[REG_0]);
         }
 
         /// <summary>
