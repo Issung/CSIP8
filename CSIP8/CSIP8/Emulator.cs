@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,7 +14,7 @@ namespace CSIP8
 {
     class Emulator
     {
-        const string ROM_FILENAME = "Roms/Tron.ch8";
+        const string ROM_FILENAME = "Roms/TestRom.ch8";
 
         const byte REG_0 = 0x0,
                     REG_1 = 0x1,
@@ -94,6 +95,8 @@ namespace CSIP8
         /// </summary>
         byte[] randomByteContainer = new byte[1];
 
+        ushort lastInstruction;
+
         public Emulator()
         {
             byte[] rom = File.ReadAllBytes(ROM_FILENAME);
@@ -119,7 +122,12 @@ namespace CSIP8
             while (true)
             {
                 Cycle();
+                Cycle();
+                Cycle();
+                Cycle();
+                Cycle();
                 DrawScreenToConsole(true);
+                //Console.ReadLine();
                 Thread.Sleep(16);
             }
         }
@@ -213,6 +221,8 @@ namespace CSIP8
                     SHR(Util.GetBits12To8(instruction), Util.GetBits8To4(instruction));
                 else if ((instruction & 0x000F) == 7)
                     SUBN(Util.GetBits12To8(instruction), Util.GetBits8To4(instruction));
+                else if ((instruction & 0x00F) == 0xE)
+                    SHL(Util.GetBits12To8(instruction), Util.GetBits8To4(instruction));
                 else
                     throw new Exception("Instruction entered 8 branch but not executed, operation was not found.");
             }
@@ -290,6 +300,8 @@ namespace CSIP8
             {
                 registerProgramCounter += 2;
             }
+
+            lastInstruction = instruction;
         }
 
         private void DrawScreenToConsole(bool drawDebugInfo)
@@ -326,6 +338,7 @@ namespace CSIP8
                 screenBuffer += ($"Register I: {registerI} (Hex {registerI.ToString("X")}){Environment.NewLine}");
                 screenBuffer += ($"Register Delay Timer: {registerDelayTimer} (Hex {registerDelayTimer.ToString("X")}){Environment.NewLine}");
                 screenBuffer += ($"Register Sound Timer: {registerSoundTimer} (Hex {registerSoundTimer.ToString("X")}){Environment.NewLine}");
+                screenBuffer += ($"Last Instruction: {lastInstruction} (Hex {lastInstruction.ToString("X")}){Environment.NewLine}");
             }
 
             Console.Clear();
@@ -474,9 +487,9 @@ namespace CSIP8
         /// Set Vx = Vy.
         /// Stores the value of register Vy in register Vx.
         /// </summary>
-        private void CopyRegister(byte from, byte to)
+        private void CopyRegister(byte regX, byte regY)
         {
-            registers[to] = registers[from];
+            registers[regX] = registers[regY];
         }
 
         /// <summary>
@@ -592,9 +605,9 @@ namespace CSIP8
         /// Set Vx = Vx SHL 1.
         /// If the most-significant bit of Vx is 1, then VF is set to 1, otherwise to 0. Then Vx is multiplied by 2.
         /// </summary>
-        private void SHL(byte regX)
+        private void SHL(byte regX, byte regY)
         {
-            if (Util.GetBit(regX, 7))
+            if (Util.GetBit(registers[regX], 7))
             {
                 registers[REG_F] = 1;
             }
@@ -603,7 +616,7 @@ namespace CSIP8
                 registers[REG_F] = 0;
             }
 
-            registers[regX] = (byte)(registers[regX] << 1);
+            registers[regX] <<= 1;
         }
 
         /// <summary>
@@ -659,41 +672,36 @@ namespace CSIP8
         /// Sprites are XORed onto the existing screen. If this causes any pixels to be erased, VF is set to 1, otherwise it is set to 0.
         /// If the sprite is positioned so part of it is outside the coordinates of the display, it wraps around to the opposite side of the screen.
         /// </summary>
-        private void DRW(byte regX, byte regY, byte n)
+        private void DRW(byte regX, byte regY, byte height)
         {
-            byte[] spriteBuffer = new byte[n];
+            //Load coords.
+            byte x = registers[regX];
+            byte y = registers[regY];
 
-            for (int i = 0; i < n; i++)
+            //Load sprites in.
+            byte[] spriteBuffer = new byte[height];
+
+            for (int i = 0; i < height; i++)
             {
                 spriteBuffer[i] = memory[registerI + i];
             }
 
             bool pixelWasErased = false;
 
-            for (int spriteIndex = 0; spriteIndex < spriteBuffer.Length; spriteIndex++)
+            for (byte r = 0; r < spriteBuffer.Length; r++)
             {
-                int column = registers[regX] + spriteIndex;
+                byte tr = Util.Wrap((byte)(r + y), DISPLAY_ROWS);
 
-                while (column >= DISPLAY_COLUMNS)
+                for (byte c = 0; c < 8; c++)
                 {
-                    column -= DISPLAY_COLUMNS;
-                }
+                    byte tc = Util.Wrap((byte)(c + x), DISPLAY_COLUMNS);
 
-                for (int spriteBitIndex = 0; spriteBitIndex < 8; spriteBitIndex++)
-                {
-                    int row = registers[regY] + spriteBitIndex;
+                    bool valueWas = display[tr, tc];
 
-                    while (row >= DISPLAY_ROWS)
-                    {
-                        row -= DISPLAY_ROWS;
-                    }
-
-                    bool valueWas = display[row, column];
-
-                    display[row, column] ^= Util.GetBit(spriteBuffer[spriteIndex], 7 - spriteBitIndex);
+                    display[tr, tc] ^= Util.GetBit(spriteBuffer[r], 7 - c);
 
                     //If pixel was true and is now false
-                    if (valueWas && !display[row, column])
+                    if (valueWas && !display[tr, tc])
                     {
                         pixelWasErased = true;
                     }
@@ -789,8 +797,7 @@ namespace CSIP8
         /// </summary>
         private void FX29(byte regX)
         {
-            //TODO: Probably incorrect.
-            registerI = registers[regX];
+            registerI = (ushort)(registers[regX] * 5);
         }
 
         /// <summary>
@@ -802,7 +809,7 @@ namespace CSIP8
         private void FX33(byte regX)
         {
             memory[registerI] = (byte)(registers[regX] / 100);
-            memory[registerI + 1] = (byte)(registers[regX] / 10 % 10);
+            memory[registerI + 1] = (byte)((registers[regX] / 10) % 10);
             memory[registerI + 2] = (byte)(registers[regX] % 10);
         }
 
@@ -818,6 +825,8 @@ namespace CSIP8
             {
                 memory[registerI + i] = registers[i];
             }
+
+            registerI = (ushort)(registerI + regX + 1);
         }
 
         /// <summary>
@@ -832,6 +841,8 @@ namespace CSIP8
             {
                 registers[i] = memory[registerI + i];
             }
+
+            registerI = (ushort)(registerI + regX + 1);
         }
     }
 }

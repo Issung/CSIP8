@@ -77,9 +77,25 @@ namespace CSIP8
             return (byte)((us & 0xFF00) >> 8);
         }
 
+        public static byte GetBits12To4(ushort us)
+        {
+            return (byte)((us & 0x0FF0) >> 4);
+        }
+
         public static byte GetBits8To0(ushort us)
         {
             return (byte)(us & 0x00FF);
+        }
+
+        /* General */
+        public static byte Wrap(byte number, byte exclusiveMax)
+        {
+            while (number >= exclusiveMax)
+            {
+                number -= exclusiveMax;
+            }
+
+            return number;
         }
     }
 }
