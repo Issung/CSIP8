@@ -14,7 +14,7 @@ namespace CSIP8
 {
     class Emulator
     {
-        const string ROM_FILENAME = "Roms/TestRom.ch8";
+        const string ROM_FILENAME = "Roms/Pong.ch8";
 
         const byte REG_0 = 0x0,
                     REG_1 = 0x1,
@@ -122,10 +122,6 @@ namespace CSIP8
             while (true)
             {
                 Cycle();
-                Cycle();
-                Cycle();
-                Cycle();
-                Cycle();
                 DrawScreenToConsole(true);
                 //Console.ReadLine();
                 Thread.Sleep(16);
@@ -148,7 +144,7 @@ namespace CSIP8
 
                 if (i % 2 == 1)
                 {
-                    Console.WriteLine(buffer.ToString("X"));
+                    Console.WriteLine($"{MEMORY_PROGRAM_START + i - 1}: {buffer.ToString("X")}");
                     buffer = 0;
                 }
             }
@@ -309,7 +305,9 @@ namespace CSIP8
             string screenBuffer = "";
             string buffer = "";
 
-            for (int r = 0; r < DISPLAY_ROWS; r++)
+            Console.CursorVisible = false;
+
+            /*for (int r = 0; r < DISPLAY_ROWS; r++)
             {
                 for (int c = 0; c < DISPLAY_COLUMNS; c++)
                 {
@@ -319,6 +317,39 @@ namespace CSIP8
                 //Console.WriteLine(buffer);
                 screenBuffer += buffer + Environment.NewLine;
                 buffer = "";
+            }*/
+
+            for (int y = 0; y < DISPLAY_ROWS; y += 2)
+            {
+                for (int x = 0; x < DISPLAY_COLUMNS; ++x)
+                {
+                    bool upperPixel = display[y, x];
+                    bool lowerPixel = display[y + 1, x];
+
+                    String s = "░";
+
+                    if (upperPixel && lowerPixel)
+                    {
+                        s = "█";
+                    }
+                    else if (upperPixel)
+                    {
+                        s = "▀";
+                    }
+                    else if (lowerPixel)
+                    {
+                        s = "▄";
+                    }
+                    else
+                    {
+                        s = " ";
+                    }
+
+                    screenBuffer += s;
+                    //tg.putString(x, y / 2, s);
+                }
+
+                screenBuffer += Environment.NewLine;
             }
 
             if (drawDebugInfo)
@@ -616,7 +647,7 @@ namespace CSIP8
                 registers[REG_F] = 0;
             }
 
-            registers[regX] <<= 1;
+            registers[regX] = (byte)(registers[regX] << 1);
         }
 
         /// <summary>
