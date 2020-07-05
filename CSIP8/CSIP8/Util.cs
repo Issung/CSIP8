@@ -45,7 +45,7 @@ namespace CSIP8
 
         public static ushort GetBits12To0(ushort us)
         {
-            return (byte)(us & 0x0FFF);
+            return (ushort)(us & 0x0FFF);
         }
 
         /* Quarters */

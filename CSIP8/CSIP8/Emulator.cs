@@ -14,7 +14,7 @@ namespace CSIP8
 {
     class Emulator
     {
-        const string ROM_FILENAME = "Roms/Pong.ch8";
+        const string ROM_FILENAME = "Roms/TestRom.ch8";
 
         const byte REG_0 = 0x0,
                     REG_1 = 0x1,
@@ -152,11 +152,12 @@ namespace CSIP8
 
         public void Cycle()
         {
-            ushort programCounterWas = registerProgramCounter;
+            //ushort programCounterWas = registerProgramCounter;
 
             ushort instruction = memory[registerProgramCounter];
             instruction <<= 8;
             instruction |= memory[registerProgramCounter + 1];
+            registerProgramCounter += 2;
 
             if (instruction == 0x00E0)
             {
@@ -292,10 +293,10 @@ namespace CSIP8
             }
 
             //If the program counter hasnt been increased by any of the executed commands.
-            if (programCounterWas == registerProgramCounter)
-            {
-                registerProgramCounter += 2;
-            }
+            //if (programCounterWas == registerProgramCounter)
+            //{
+            //    registerProgramCounter += 2;
+            //}
 
             lastInstruction = instruction;
         }
@@ -463,7 +464,7 @@ namespace CSIP8
         {
             if (registers[register] == value)
             {
-                registerProgramCounter += 4;
+                registerProgramCounter += 2;
             }
         }
 
@@ -476,7 +477,7 @@ namespace CSIP8
         {
             if (registers[register] != value)
             {
-                registerProgramCounter += 4;
+                registerProgramCounter += 2;
             }
         }
 
@@ -489,7 +490,7 @@ namespace CSIP8
         {
             if (registers[register1] == registers[register2])
             {
-                registerProgramCounter += 4;
+                registerProgramCounter += 2;
             }
         }
 
@@ -659,7 +660,7 @@ namespace CSIP8
         {
             if (registers[regX] != registers[regY])
             {
-                registerProgramCounter += 4;
+                registerProgramCounter += 2;
             }
         }
 
@@ -750,7 +751,7 @@ namespace CSIP8
         private void SKP(byte regX)
         {
             if (IsKeyPressed(registers[regX]))
-                registerProgramCounter += 4;
+                registerProgramCounter += 2;
         }
 
         /// <summary>
@@ -761,7 +762,7 @@ namespace CSIP8
         private void SKNP(byte regX)
         {
             if (!IsKeyPressed(registers[regX]))
-                registerProgramCounter += 4;
+                registerProgramCounter += 2;
         }
 
         /// <summary>
