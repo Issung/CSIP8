@@ -14,7 +14,7 @@ namespace CSIP8
 {
     class Emulator
     {
-        const string ROM_FILENAME = "Roms/TestRom.ch8";
+        const string ROM_FILENAME = "Roms/SpaceInvaders.ch8";
 
         const byte REG_0 = 0x0,
                     REG_1 = 0x1,
@@ -97,6 +97,13 @@ namespace CSIP8
 
         ushort lastInstruction;
 
+        const bool ONLY_DRAW_IF_SCREEN_UPDATED = true;
+
+        /// <summary>
+        /// A flag for checking if the screen should be drawn, as there is no point if the screen hasnt been drawn to.
+        /// </summary>
+        bool hasDrawn = false;
+
         public Emulator()
         {
             byte[] rom = File.ReadAllBytes(ROM_FILENAME);
@@ -119,12 +126,19 @@ namespace CSIP8
 
             random = new Random();
 
+            Console.Clear();
+
             while (true)
             {
                 Cycle();
-                DrawScreenToConsole(true);
-                //Console.ReadLine();
-                Thread.Sleep(16);
+
+                if (!ONLY_DRAW_IF_SCREEN_UPDATED || (ONLY_DRAW_IF_SCREEN_UPDATED && hasDrawn))
+                { 
+                    DrawScreenToConsole(true);
+                    hasDrawn = false;
+                }
+                
+                //Thread.Sleep(1);
             }
         }
 
@@ -152,8 +166,6 @@ namespace CSIP8
 
         public void Cycle()
         {
-            //ushort programCounterWas = registerProgramCounter;
-
             ushort instruction = memory[registerProgramCounter];
             instruction <<= 8;
             instruction |= memory[registerProgramCounter + 1];
@@ -292,12 +304,6 @@ namespace CSIP8
                 registerDelayTimer -= 1;
             }
 
-            //If the program counter hasnt been increased by any of the executed commands.
-            //if (programCounterWas == registerProgramCounter)
-            //{
-            //    registerProgramCounter += 2;
-            //}
-
             lastInstruction = instruction;
         }
 
@@ -319,7 +325,7 @@ namespace CSIP8
                 screenBuffer += buffer + Environment.NewLine;
                 buffer = "";
             }*/
-
+            
             for (int y = 0; y < DISPLAY_ROWS; y += 2)
             {
                 for (int x = 0; x < DISPLAY_COLUMNS; ++x)
@@ -373,8 +379,25 @@ namespace CSIP8
                 screenBuffer += ($"Last Instruction: {lastInstruction} (Hex {lastInstruction.ToString("X")}){Environment.NewLine}");
             }
 
-            Console.Clear();
-            Console.WriteLine(screenBuffer);
+            //Console.Clear();
+            int top = 0;
+            int left = 0;
+            for (int i = 0; i < screenBuffer.Length; i++)
+            {
+                if (screenBuffer.Substring(i, 2) == Environment.NewLine)
+                {
+                    top += 1;
+                    left = 0;
+                    i += 1;
+                }
+                else
+                {
+                    Console.SetCursorPosition(left, top);
+                    Console.Write(screenBuffer[i]);
+                    left += 1;
+                }
+            }
+            //Console.WriteLine(screenBuffer);
         }
 
         private byte? GetPressedKey()
@@ -431,8 +454,8 @@ namespace CSIP8
         /// </summary>
         private void RET()
         {
-            //TODO: Should + 2 here?
-            registerProgramCounter = (ushort)(stack.Pop() + 2);
+            //The correct return position is stored in the stack so this will work just fine.
+            registerProgramCounter = stack.Pop();
         }
 
         /// <summary>
@@ -451,6 +474,7 @@ namespace CSIP8
         /// </summary>
         private void Call(ushort nnn)
         {
+            //registerProgramCounter will be incremented by 2 before this method is called, so we are storing the return position.
             stack.Push(registerProgramCounter);
             registerProgramCounter = nnn;
         }
@@ -741,6 +765,8 @@ namespace CSIP8
             }
 
             registers[REG_F] = (byte)(pixelWasErased ? 1 : 0);
+
+            hasDrawn = true;
         }
 
         /// <summary>
