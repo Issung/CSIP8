@@ -1,4 +1,5 @@
-﻿using System;
+﻿using OpenTK.Input;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -7,6 +8,10 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Input;
+using Key = System.Windows.Input.Key;
+using Keyboard = System.Windows.Input.Keyboard;
+using SFML.Audio;
 
 //http://devernay.free.fr/hacks/chip8/C8TECH10.HTM#2.2
 
@@ -14,7 +19,7 @@ namespace CSIP8
 {
     class Emulator
     {
-        const string ROM_FILENAME = "Roms/SpaceInvaders.ch8";
+        const string ROM_FILENAME = "Roms/Breakout.ch8";
 
         const byte REG_0 = 0x0,
                     REG_1 = 0x1,
@@ -86,7 +91,7 @@ namespace CSIP8
         /// <summary>
         /// Access with ROW, COLUMN.
         /// </summary>
-        bool[,] display = new bool[DISPLAY_ROWS, DISPLAY_COLUMNS];
+        public bool[,] display { get; private set; } = new bool[DISPLAY_ROWS, DISPLAY_COLUMNS];
 
         Random random;
 
@@ -102,7 +107,7 @@ namespace CSIP8
         /// <summary>
         /// A flag for checking if the screen should be drawn, as there is no point if the screen hasnt been drawn to.
         /// </summary>
-        bool hasDrawn = false;
+        public bool hasDrawn = false;
 
         public Emulator()
         {
@@ -122,13 +127,13 @@ namespace CSIP8
             }
 
             Console.WriteLine("Read rom complete.");
-            Console.ReadLine();
+            //Console.ReadLine();
 
             random = new Random();
 
             Console.Clear();
 
-            while (true)
+            /*while (true)
             {
                 Cycle();
 
@@ -139,7 +144,7 @@ namespace CSIP8
                 }
                 
                 //Thread.Sleep(1);
-            }
+            }*/
         }
 
         private void PrintRom(byte[] rom)
@@ -295,6 +300,7 @@ namespace CSIP8
 
             if (registerSoundTimer > 0)
             {
+                //new Thread(() => { Console.Beep(800, 16); }).Start();
                 Console.Beep(800, 16);
                 registerSoundTimer -= 1;
             }
@@ -377,6 +383,8 @@ namespace CSIP8
                 screenBuffer += ($"Register Delay Timer: {registerDelayTimer} (Hex {registerDelayTimer.ToString("X")}){Environment.NewLine}");
                 screenBuffer += ($"Register Sound Timer: {registerSoundTimer} (Hex {registerSoundTimer.ToString("X")}){Environment.NewLine}");
                 screenBuffer += ($"Last Instruction: {lastInstruction} (Hex {lastInstruction.ToString("X")}){Environment.NewLine}");
+                //screenBuffer += ($"Console.KeyAvailable: {Console.KeyAvailable}{Environment.NewLine}");
+                //screenBuffer += ($"Console.ReadKeyss: {(Console.KeyAvailable ? Console.ReadKey(true).Key.ToString() : "None")}{Environment.NewLine}");
             }
 
             //Console.Clear();
@@ -402,8 +410,30 @@ namespace CSIP8
 
         private byte? GetPressedKey()
         {
-            //TODO
+            for (int i = 0; i < 16; i++)
+            {
+                if (Program.input[i])
+                    return (byte?)i;
+            }
+
             return null;
+            /*if (Console.KeyAvailable)
+            {
+                ConsoleKeyInfo cki = Console.ReadKey(true);
+
+                if (cki.Key >= ConsoleKey.D0 && cki.Key <= ConsoleKey.D9)
+                {
+                    return (byte)(cki.Key - ConsoleKey.D0);
+                }
+                else if (cki.Key >= ConsoleKey.A && cki.Key <= ConsoleKey.F)
+                {
+                    return (byte)(cki.Key - ConsoleKey.A);
+                }
+                else
+                    return null;
+            }
+            else
+                return null;*/
         }
 
         private bool IsKeyPressed(byte key)
@@ -411,8 +441,7 @@ namespace CSIP8
             if (15 < key || key < 0)
                 throw new ArgumentException("Key value out of range, ");
 
-            //TODO.
-            return false;
+            return Program.input[key];
         }
 
         /* Variables:
